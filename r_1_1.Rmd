@@ -1,0 +1,241 @@
+```{r}
+# Load necessary libraries
+library(dplyr)
+
+# Load the data
+
+ratings <- read.csv("C:\\Users\\swaro\\Downloads\\rating.csv")
+
+# View the structure of the data
+str(ratings)
+
+```
+
+```{r}
+# View the first few rows
+head(ratings)
+
+
+```
+```{r}
+# Get a summary of the data
+summary(ratings)
+```
+
+```{r}
+# Check for any missing values
+sum(is.na(ratings))
+```
+```{r}
+# Check for missing values in each column
+colSums(is.na(ratings))
+
+```
+```{r}
+# Check if there are any missing values in the dataset
+anyNA(ratings)
+
+```
+
+```{r}
+# Install and load the naniar package if you haven't already
+install.packages("naniar")
+
+
+
+```
+
+```{r}
+# Install and load the VIM package if you haven't already
+install.packages("VIM")
+
+
+```
+
+
+```{r}
+library(VIM)
+
+# Visualize missing data
+aggr(ratings, col = c("navyblue", "red"), numbers = TRUE, sortVars = TRUE, labels = names(ratings), cex.axis = 0.7, gap = 3, ylab = c("Missing data", "Pattern"))
+
+```
+
+
+```{r}
+# Identify duplicate rows
+duplicates <- ratings[duplicated(ratings), ]
+
+# Display duplicate rows
+print(duplicates)
+
+```
+
+
+```{r}
+# Filter out ratings outside the valid range
+ratings <- ratings %>% filter(rating >= 0.5 & rating <= 5)
+
+```
+
+
+```{r}
+# Plot the distribution of ratings
+library(ggplot2)
+ggplot(ratings, aes(x = rating)) +
+  geom_histogram(binwidth = 0.5, fill = "blue", color = "black") +
+  labs(title = "Distribution of Ratings", x = "Rating", y = "Count")
+
+```
+
+```{r}
+# Identify outliers outside the expected range of 0.5 to 5
+outliers <- ratings %>% filter(rating < 0.5 | rating > 5)
+
+# Display outliers
+print(outliers)
+
+```
+
+
+```{r}
+# Calculate Q1 and Q3 for the rating column
+Q1 <- quantile(ratings$rating, 0.25)
+Q3 <- quantile(ratings$rating, 0.75)
+IQR <- Q3 - Q1
+
+# Define lower and upper bounds for outliers
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Identify outliers based on IQR
+outliers_iqr <- ratings %>% filter(rating < lower_bound | rating > upper_bound)
+
+# Display statistical outliers
+print(outliers_iqr)
+
+```
+
+```{r}
+# Boxplot to visualize outliers
+library(ggplot2)
+ggplot(ratings, aes(x = "", y = rating)) +
+  geom_boxplot(fill = "lightblue", color = "darkblue") +
+  labs(title = "Boxplot of Ratings", y = "Rating")
+
+```
+```{r}
+library(dplyr)
+
+```
+
+
+
+```{r}
+# Calculate Q1 and Q3 for the rating column
+Q1 <- quantile(ratings$rating, 0.25)
+Q3 <- quantile(ratings$rating, 0.75)
+IQR <- Q3 - Q1
+
+# Define lower and upper bounds for outliers
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Count outliers based on IQR
+outliers_count_iqr <- ratings %>% filter(rating < lower_bound | rating > upper_bound) %>% nrow()
+
+# Display the number of statistical outliers
+print(paste("Number of outliers based on IQR method:", outliers_count_iqr))
+
+```
+
+```{r}
+# Find any ratings outside the range of 0.5 to 5
+out_of_range <- ratings %>% filter(rating < 0.5 | rating > 5)
+
+# Display the number of rows with out-of-range values
+print(paste("Number of ratings outside the range 0.5 to 5:", nrow(out_of_range)))
+
+# If there are any, display the out-of-range data points
+if (nrow(out_of_range) > 0) {
+  print("Out-of-range ratings:")
+  print(out_of_range)
+} else {
+  print("All ratings are within the range of 0.5 to 5.")
+}
+
+```
+
+
+
+```{r}
+# Calculate Q1 and Q3 for the rating column
+Q1 <- quantile(ratings$rating, 0.25)
+Q3 <- quantile(ratings$rating, 0.75)
+IQR <- Q3 - Q1
+
+# Define lower and upper bounds for outliers
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Filter out ratings that are considered outliers based on IQR
+ratings_cleaned <- ratings %>% filter(rating >= lower_bound & rating <= upper_bound)
+
+# Display the number of rows before and after removing outliers
+print(paste("Original number of rows:", nrow(ratings)))
+print(paste("Number of rows after removing outliers:", nrow(ratings_cleaned)))
+
+```
+```{r}
+# Check for duplicates in the dataset
+duplicates <- ratings %>% filter(duplicated(ratings))
+print(paste("Number of duplicate rows:", nrow(duplicates)))
+
+```
+
+```{r}
+#Feature Engineering
+# Ensure the timestamp is in date-time format
+ratings$timestamp <- as.POSIXct(ratings$timestamp, origin = "1970-01-01")
+
+# Extract year and month from the timestamp
+ratings$year <- format(ratings$timestamp, "%Y")
+ratings$month <- format(ratings$timestamp, "%m")
+
+# Verify the new columns by displaying the first few rows
+head(ratings)
+
+
+```
+
+```{r}
+ratings_cleaned <- ratings
+
+```
+
+```{r}
+# Save the cleaned data
+write.csv(ratings_cleaned, "cleaned_rating.csv", row.names = FALSE)
+
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

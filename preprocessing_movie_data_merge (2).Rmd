@@ -1,0 +1,260 @@
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(stringr)
+
+
+#loading files
+
+tag <- read_csv("data/tag.csv", show_col_types = FALSE)
+movie <- read_csv("data/movie.csv", show_col_types = FALSE)
+link <- read_csv("data/link.csv", show_col_types = FALSE)
+genome_tags <- read_csv("data/genome_tags.csv", show_col_types = FALSE)
+genome_scores <- read_csv("data/genome_scores.csv", show_col_types = FALSE)
+rating <- read_csv("data/rating.csv", show_col_types = FALSE)
+
+
+nrow(tag)
+nrow(movie)
+nrow(link)
+nrow(genome_tags)
+nrow(genome_scores)
+nrow(rating)
+
+
+#preprocess genome_scores
+#check and remove missing values
+genome_scores <- genome_scores %>%
+  drop_na() %>%
+  distinct() %>%
+  mutate(movieId = as.integer(movieId), tagId = as.integer(tagId), relevance = as.numeric(relevance))
+
+
+
+#Preprocess genome_tags
+#missing values and standardize text
+genome_tags <- genome_tags %>%
+  drop_na() %>%
+  mutate(tagId = as.integer(tagId), tag = str_to_lower(tag)) %>%
+    distinct()
+
+
+#preprocess rating
+#timestamp and missing values
+rating <- rating %>%
+  drop_na() %>%
+  mutate(userId = as.integer(userId), movieId = as.integer(movieId), rating = as.numeric(rating),
+         timestamp = as.POSIXct(timestamp, format = "%d-%m-%Y %H:%M")) %>%
+  distinct()
+
+
+
+#preprocess tag
+tag <- tag %>%
+  drop_na() %>%
+  mutate(userId = as.integer(userId), movieId = as.integer(movieId), tag = str_to_lower(tag),
+         timestamp = as.POSIXct(timestamp, format = "%d-%m-%Y %H:%M")) %>%
+  distinct()
+
+
+
+# Handling outliers in ratings if necessary
+rating <- rating %>%
+  filter(between(rating, 0.5, 5))  # Remove ratings outside the typical range (if any)
+
+
+# Optionally, handle relevance score outliers based on statistical methods, e.g., IQR
+q1 <- quantile(genome_scores$relevance, 0.25)
+q3 <- quantile(genome_scores$relevance, 0.75)
+iqr <- q3 - q1
+
+
+
+# Define lower and upper bounds for relevance outliers
+lower_bound <- q1 - 1.5 * iqr
+upper_bound <- q3 + 1.5 * iqr
+
+# Remove outliers in genome_scores based on relevance bounds
+genome_scores <- genome_scores %>%
+  filter(relevance >= lower_bound & relevance <= upper_bound)
+
+
+# Extract the year from the 'title' column and create a new column 'movie_year'
+movie$movie_year <- as.numeric(str_extract(movie$title, "\\d{4}"))
+
+
+# Load the ratings data
+ratings <- rating
+
+# Step 1: Count ratings per user
+user_rating_counts <- ratings %>%
+  group_by(userId) %>%
+  summarize(rating_count = n())
+
+# Step 2: Filter users with at least 200 ratings
+active_users <- user_rating_counts %>%
+  filter(rating_count >= 200)
+
+# Step 3: Filter ratings data to include only active users
+filtered_ratings <- ratings %>%
+  semi_join(active_users, by = "userId")
+
+
+# Identify missing movieIds
+missing_movies <- setdiff(unique(ratings$movieId), unique(filtered_ratings$movieId))
+
+
+# Step 4: Add back ratings for missing movieIds
+# Here, we select a sample of ratings for each missing movieId (let's select up to 5 ratings per missing movieId)
+additional_ratings <- ratings %>%
+  filter(movieId %in% missing_movies) %>%
+  group_by(movieId) %>%
+  sample_n(size = min(5, n()), replace = FALSE) %>%
+  ungroup()
+
+
+# Combine the filtered ratings with the additional ratings
+filtered_ratings_final <- bind_rows(filtered_ratings, additional_ratings)
+
+
+# Convert timestamp column to Date format
+filtered_ratings_final$timestamp <- as.POSIXct(filtered_ratings_final$timestamp, format="%Y-%m-%dT%H:%M:%SZ", tz="UTC")
+
+# Extract the year from the timestamp
+filtered_ratings_final$year <- format(filtered_ratings_final$timestamp, "%Y")
+
+# Count the number of ratings per year
+ratings_per_year <- filtered_ratings_final %>%
+  group_by(year) %>%
+  summarize(count = n())
+
+# Convert year to numeric for sorting in the plot
+ratings_per_year$year <- as.numeric(ratings_per_year$year)
+
+# # Plot the number of ratings per year
+# library(ggplot2)
+# ggplot(ratings_per_year, aes(x = year, y = count)) +
+#   geom_bar(stat = "identity", fill = "skyblue") +
+#   labs(title = "Number of Ratings Given Each Year", x = "Year", y = "Number of Ratings") +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+# Define threshold for downsampling (200,000 ratings per year)
+threshold <- 200000
+
+# Initialize an empty dataframe to store the balanced data
+balanced_ratings <- data.frame()
+
+# Loop through each year
+for (yr in unique(filtered_ratings_final$year)) {
+  # Filter data for the specific year
+  year_data <- filtered_ratings_final %>% filter(year == yr)
+  
+  # Check if the number of ratings for this year exceeds the threshold
+  if (nrow(year_data) > threshold) {
+    # Group by movie within the year and calculate the proportion of ratings for each movie
+    movie_counts <- year_data %>%
+      group_by(movieId) %>%
+      summarize(movie_rating_count = n()) %>%
+      mutate(sample_size = round(movie_rating_count / sum(movie_rating_count) * threshold))
+    
+    # Downsample each movie within the year based on the calculated sample size
+    year_sample <- year_data %>%
+      inner_join(movie_counts, by = "movieId") %>%
+      group_by(movieId) %>%
+      sample_n(size = sample_size[1]) %>%
+      ungroup() %>%
+      select(-sample_size, -movie_rating_count)
+  } else {
+    # If ratings for the year are within the threshold, retain all
+    year_sample <- year_data
+  }
+  
+  # Identify any missing movieIds within the year
+  missing_movies <- setdiff(unique(year_data$movieId), unique(year_sample$movieId))
+  
+  # Add back a few ratings for each missing movieId to ensure all movies are represented
+  additional_ratings <- year_data %>%
+    filter(movieId %in% missing_movies) %>%
+    group_by(movieId) %>%
+    sample_n(size = min(1, n()), replace = FALSE) %>%
+    ungroup()
+  
+  # Combine the downsampled year sample with additional ratings for missing movies
+  year_sample <- rbind(year_sample, additional_ratings)
+  
+  # Combine the downsampled or original data back into the balanced dataset
+  balanced_ratings <- rbind(balanced_ratings, year_sample)
+}
+
+# Check the number of rows after downsampling
+cat("Number of rows after downsampling:", nrow(balanced_ratings), "\n")
+
+# Count the number of ratings per year in the balanced dataset
+ratings_per_year_balanced <- balanced_ratings %>%
+  group_by(year) %>%
+  summarize(count = n())
+
+
+# Remove the year and timestamp columns and normalize the rating column
+balanced_ratings <- balanced_ratings %>%
+  select(-year, -timestamp) %>%           # Remove year and timestamp columns
+  mutate(rating = rating / 5)             # Normalize the rating column
+
+
+# Calculate the number of unique movieIds
+real_unique <- length(unique(rating$movieId))
+unique_movies <- length(unique(balanced_ratings$movieId))
+initial_movies <- length(unique(ratings$movieId))
+filtered_ratings_number <- length(unique(filtered_ratings_final$movieId))
+
+# Print the result
+cat("Number of unique movie IDs in the initial dataset:", initial_movies, "\n")
+cat("Number of unique movie IDs in the filtered dataset:", filtered_ratings_number, "\n")
+cat("Number of unique movie IDs in the balanced dataset:", unique_movies, "\n")
+
+
+
+# Merge balanced_ratings with movies on `movieId`
+merged_data <- balanced_ratings %>%
+  inner_join(movie, by = "movieId")
+
+
+# Remove the timestamp column from the tag dataset
+tag <- tag %>%
+  select(-timestamp)
+
+# Merge the datasets on `userId` and `movieId`
+merged_data <- merged_data %>%
+  inner_join(tag, by = c("userId", "movieId"))
+
+
+
+# For each `movieId`, select the `tagId` with the highest relevance
+top_tag_ids <- genome_scores %>%
+  group_by(movieId) %>%
+  slice_max(relevance, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(movieId, tagId)  # Only keep `movieId` and `tagId`
+
+# Merge the `merged_data` with the top `tagId` for each `movieId`
+merged_data <- merged_data %>%
+  inner_join(top_tag_ids, by = "movieId")
+
+
+# Merge the `merged_data` with `genome_tags` on `tagId`
+final_merged_data <- merged_data %>%
+  inner_join(genome_tags, by = "tagId")
+
+nrow(final_merged_data)
+
+write_csv(final_merged_data, "data/merged_data_final.csv")
+
+```
+
+
+
+

@@ -1,0 +1,222 @@
+```{r}
+library(dplyr)
+
+```
+```{r}
+# Load the data
+
+movies<- read.csv("C:\\Users\\swaro\\Downloads\\movie.csv",stringsAsFactors = FALSE)
+
+# View the structure of the data
+str(movies)
+```
+
+```{r}
+summary(movies)
+
+
+```
+
+
+
+
+```{r}
+# Check for any missing values
+sum(is.na(movies))
+```
+
+```{r}
+# Check for missing values
+colSums(is.na(movies))
+
+```
+
+
+
+
+
+```{r}
+library(data.table)
+
+```
+
+
+```{r}
+movie_gern<-as.data.frame(movies$genres,stringsAsFactors = FALSE)
+movie_gern2<-as.data.frame(tstrsplit(movie_gern[,1],"[|]",type.convert=TRUE),stringsAsFactors=FALSE)
+
+```
+
+
+
+
+
+
+```{r}
+# Initial setup
+library(data.table)
+
+# Split genres in the `movies` data frame
+movie_gern <- as.data.frame(movies$genres, stringsAsFactors = FALSE)
+movie_genre2 <- as.data.frame(tstrsplit(movie_gern[,1], "[|]", type.convert = TRUE), stringsAsFactors = FALSE)
+
+# Confirm column names for `movie_genre2`
+colnames(movie_genre2) <- c(1:10)  # Assuming 10 columns for genre splits
+
+# Genre list
+list_genre <- c("Action", "Adventure", "Animation", "Children", 
+                "Comedy", "Crime", "Documentary", "Drama", "Fantasy", 
+                "Film-Noir", "Horror", "Musical", "Mystery", "Romance", 
+                "Sci-Fi", "Thriller", "War", "Western")
+
+# Verify list length
+print(length(list_genre))  # Should print 18
+
+# Initialize genre matrix
+genre_mat1 <- matrix(0, 27280, length(list_genre))
+genre_mat1[1, ] <- list_genre
+colnames(genre_mat1) <- list_genre
+
+# Fill genre matrix
+for (index in 1:nrow(movie_genre2)) {
+  for (col in 1:ncol(movie_genre2)) {
+    gen_col <- which(genre_mat1[1, ] == movie_genre2[index, col])
+    if (length(gen_col) > 0) {  # Check if genre is found in `list_genre`
+      genre_mat1[index + 1, gen_col] <- 1
+    }
+  }
+}
+
+# Convert to data frame and adjust data type
+genre_mat2 <- as.data.frame(genre_mat1[-1, ], stringsAsFactors = FALSE)
+for (col in 1:ncol(genre_mat2)) {
+  genre_mat2[, col] <- as.integer(genre_mat2[, col])
+}
+
+# Display structure
+str(genre_mat2)
+
+```
+
+```{r}
+#creating a search matrix that gives us films based on genres
+nrow(movies)
+nrow(genre_mat2)
+genre_mat2 <- genre_mat2[-nrow(genre_mat2), ]
+searchMovie <- cbind(movies[,1:2], genre_mat2)
+head(searchMovie)
+
+
+```
+
+```{r}
+
+```
+
+```{r}
+# Load necessary libraries
+library(data.table)
+library(dplyr)
+library(writexl) # For saving as an Excel file
+
+# Load the movies data (make sure the path is correct)
+movies <- read.csv("C:\\Users\\swaro\\Downloads\\movie.csv")
+
+# Step 1: Extract genres into separate columns
+# Convert genres to a data frame and split genres by "|"
+movie_genre <- as.data.frame(movies$genres, stringsAsFactors = FALSE)
+movie_genre_split <- as.data.frame(tstrsplit(movie_genre[,1], "[|]", type.convert = TRUE), stringsAsFactors = FALSE)
+
+# Step 2: Define the list of unique genres
+list_genre <- c("Action", "Adventure", "Animation", "Children", 
+                "Comedy", "Crime", "Documentary", "Drama", "Fantasy", 
+                "Film-Noir", "Horror", "Musical", "Mystery", "Romance", 
+                "Sci-Fi", "Thriller", "War", "Western")
+
+# Step 3: Create a matrix to store genres as binary (0 or 1) for each movie
+genre_matrix <- matrix(0, nrow = nrow(movie_genre_split), ncol = length(list_genre))
+colnames(genre_matrix) <- list_genre
+
+# Step 4: Fill the genre matrix based on the genres in movie_genre_split
+for (index in 1:nrow(movie_genre_split)) {
+  for (col in 1:ncol(movie_genre_split)) {
+    genre <- movie_genre_split[index, col]
+    if (!is.na(genre)) {
+      genre_index <- match(genre, list_genre)
+      if (!is.na(genre_index)) {
+        genre_matrix[index, genre_index] <- 1
+      }
+    }
+  }
+}
+
+# Step 5: Convert genre matrix to a data frame and ensure all columns are integers
+genre_df <- as.data.frame(genre_matrix, stringsAsFactors = FALSE)
+for (col in 1:ncol(genre_df)) {
+  genre_df[, col] <- as.integer(genre_df[, col])
+}
+
+# Step 6: Combine movieId, title, year, and genre_df into a single data frame
+movies_final <- cbind(movies[, c("movieId", "title", "year")], genre_df)
+
+# Step 7: Save the final data frame as an Excel file
+write_xlsx(movies_final, "movies_genres_final.xlsx")
+
+# Print final message
+print("Data processing completed. The file 'movies_genres_final.xlsx' has been saved.")
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

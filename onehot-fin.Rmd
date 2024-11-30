@@ -1,0 +1,55 @@
+```{r}
+data<-read.csv("C:\\Users\\swaro\\Downloads\\merged_data_final.csv")
+dim(data)
+```
+```{r}
+# Load required libraries
+library(tidyr)
+library(dplyr)
+
+# Split the 'genres' column into multiple binary columns
+data_one_hot <- data %>%
+  separate_rows(genres, sep = "\\|") %>%
+  mutate(value = 1) %>%
+  pivot_wider(names_from = genres, values_from = value, values_fill = list(value = 0))
+
+# View the one-hot encoded dataset
+head(data_one_hot)
+
+
+```
+```{r}
+install.packages("psych")
+
+```
+```{r}
+library(psych)
+
+```
+
+```{r}
+describe(data_one_hot)
+
+```
+```{r}
+getwd()
+
+```
+
+```{r}
+write.csv(data_one_hot, "cleaned_data(onehot).csv", row.names = FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

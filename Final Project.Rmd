@@ -1,0 +1,509 @@
+---
+title: "project"
+author: "project"
+date: "2024-11-13"
+output: html_document
+---
+```{r}
+#Installing Required packages
+install.packages('DT')
+install.packages('psych')
+install.packages('tidyr')
+install.packages("shiny")
+
+```
+
+```{r}
+#Libraries
+library(psych)
+library(tidyr)
+library(shiny)
+library(dplyr)
+library(data.table)
+library(DT)
+library(ggplot2)
+```
+*Data Loading and Preprocessing*
+```{r}
+# Load the dataset
+data_cleaned_encoded <- fread("C:\\Users\\sivac\\Desktop\\merged_data_final.csv")
+```
+```{r}
+#Displaying some data
+head(data_cleaned_encoded)
+```
+
+```{r}
+dim(data_cleaned_encoded) #Dimensions
+```
+
+```{r}
+describe(data_cleaned_encoded) #Descriptive statistics
+```
+
+```{r}
+str(data_cleaned_encoded)
+```
+
+```{r}
+#checking for missing values,if any
+na_value <- sapply(data_cleaned_encoded, function(x) sum(is.na(x)))
+b_value <- sapply(data_cleaned_encoded, function(x) sum(x == ""))
+df_value <- data.frame(
+  Column = names(na_value),
+  NA_Count = na_value,
+  Blank_Count = b_value
+)
+
+df_value
+```
+
+```{r}
+sampled_data <- data_cleaned_encoded[sample(1:nrow(data_cleaned_encoded), 10), ] #Displaying some random samplesfrom the data
+sampled_data
+```
+*Exploratory Data Analysis (EDA)*
+```{r}
+genres_split <- strsplit(as.character(data_cleaned_encoded$genres), "\\|")
+
+all_genres <- unlist(genres_split)
+
+unique_genres <- unique(all_genres)
+
+print(unique_genres)
+```
+*Feature Engineering*
+
+*Rating Normalization*
+```{r}
+# Normalize genres and ratings for better recommendations
+data_cleaned_encoded <- data_cleaned_encoded %>%
+  group_by(userId, title, genres) %>%
+  summarize(rating = mean(rating, na.rm = TRUE), .groups = "drop") %>%
+  group_by(userId) %>%
+  mutate(rating_normalized = rating - mean(rating, na.rm = TRUE)) %>%
+  ungroup()
+
+```
+*To account for user bias, rating normalization was used by adjusting each movie rating based on the user’s average. This helps balance out differences in how users rate, whether they tend to score things higher or lower than others. By normalizing the ratings, we ensure a fairer comparison of preferences, which is essential for making personalized recommendations.*
+
+*Data Visualization*
+```{r}
+# Process the dataset to extract top genres
+top_genres <- data_cleaned_encoded %>%
+  separate_rows(genres, sep = "\\|") %>%
+  count(genres, sort = TRUE) %>%
+  top_n(10, n)
+
+# Plot the top genres as a bar chart
+ggplot(top_genres, aes(x = reorder(genres, n), y = n, fill = genres)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Top 10 Movie Genres by Count",
+    x = "Genres",
+    y = "Count",
+    subtitle = "Top genres from the dataset"
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = 20, margin = margin(b = 25))
+  )+
+  geom_text(aes(label = n), hjust = -0.1, size = 4)
+```
+*Popular genres like Action and Comedy highlight key clusters of movies, which item-based filtering can use to find similarities. This ensures recommendations align with user preferences for frequently co-rated genres.*
+```{r}
+
+# Explore Top Genres with percentages
+top_genres <- data_cleaned_encoded %>%
+  separate_rows(genres, sep = "\\|") %>%
+  count(genres, sort = TRUE) %>%
+  top_n(10, n) %>%
+  mutate(percentage = round(n / sum(n) * 100, 1))
+
+# Plot the Top Genres as a Pie Chart with Labels
+ggplot(top_genres, aes(x = "", y = n, fill = genres)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = paste0(percentage, "%")),
+            position = position_stack(vjust = 0.5), size = 4) +
+  theme_minimal() +
+  labs(title = "Top Movie Genres by percentage", y = "Count", x = "") +
+  theme(axis.text.x = element_blank(),
+        plot.title = element_text(size = 16, margin = margin(b = 20)),
+        legend.position = "right")
+
+```
+*The proportional view of genres helps focus item-based filtering on dominant categories. It ensures the algorithm prioritizes well-represented genres, improving the relevance of suggestions.*
+```{r}
+Top_25 <-  data_cleaned_encoded%>%
+  group_by(title) %>%
+  summarise(Rating_Count = n()) %>%
+  arrange(desc(Rating_Count)) %>%
+  slice_head(n = 25)
+
+# View the result
+print(Top_25)
+
+```
+
+```{r}
+ggplot(Top_25, aes(x = reorder(title, Rating_Count), y = Rating_Count, fill = Rating_Count)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +  # Creates a horizontal bar chart
+  labs(title = "Top 25 Rated Movies",
+       x = "Top 25 Movie Names",
+       y = "Total Ratings") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 16, margin = margin(b = 20)),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10)) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_fill_gradient(low = "lightgrey", high = "black")
+```
+*Frequently rated movies like Pulp Fiction serve as anchors for similarity calculations in item-based filtering. These titles help the model identify other movies co-rated by users with similar preferences.*
+```{r}
+distinct_movie_count <-  data_cleaned_encoded %>%
+  summarise(total_distinct_movies = n_distinct(title))
+
+# Print the number of distinct movies
+print(distinct_movie_count)
+```
+
+```{r}
+#Filter the data for the movie 'Pulp Fiction'
+pulp_fiction_ratings <- data_cleaned_encoded %>%
+  filter(title == "Pulp Fiction (1994)") %>%
+  count(rating)
+
+#Plot the user ratings using a horizontal bar chart
+ggplot(pulp_fiction_ratings, aes(x = factor(rating), y = n, fill = factor(rating))) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "User Ratings of the Movie 'Pulp Fiction'",
+       x = "Rating",
+       y = "Number of Users") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 16, margin = margin(b = 20), hjust = 0.5),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10)) +
+  scale_fill_brewer(palette = "Blues")
+
+```
+
+```{r}
+
+#Count the number of ratings given by each userId
+highest_rating_user <- data_cleaned_encoded %>%
+  group_by(userId) %>%
+  summarise(Rating_Count = n()) %>%
+  arrange(desc(Rating_Count)) %>%
+  slice_head(n = 10)
+
+# Print the userId and Rating_Count of the user with the most ratings
+print(highest_rating_user)
+
+ggplot(highest_rating_user, aes(x = reorder(as.factor(userId), Rating_Count), y = Rating_Count, fill = Rating_Count)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 Users by Number of Ratings Given",
+       x = "User ID",
+       y = "Number of Ratings") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 16, margin = margin(b = 20), hjust = 0.5),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue")
+
+```
+
+```{r}
+# Average Rating by Genre
+avg_genre_rating <- data_cleaned_encoded %>%
+  separate_rows(genres, sep = "\\|") %>%
+  group_by(genres) %>%
+  summarise(average_rating = mean(rating, na.rm = TRUE)) %>%
+  arrange(desc(average_rating))
+
+# Bar chart
+ggplot(avg_genre_rating, aes(x = reorder(genres, average_rating), y = average_rating, fill = genres)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Average Rating by Genre",
+       x = "Genres",
+       y = "Average Rating") +
+  theme(legend.position = "none")
+```
+*This bar chart shows the average ratings for different genres, highlighting that genres like Film-Noir and Documentary receive higher average ratings. These genres can be prioritized in recommendations to align with user preferences for high-quality content.*
+```{r}
+# Top Movies by Average Rating (Minimum 50 Ratings)
+top_movies <- data_cleaned_encoded %>%
+  group_by(title) %>%
+  summarise(average_rating = mean(rating, na.rm = TRUE), count = n()) %>%
+  filter(count >= 50) %>%
+  arrange(desc(average_rating)) %>%
+  slice_head(n = 10)
+
+# Bar chart
+ggplot(top_movies, aes(x = reorder(title, average_rating), y = average_rating, fill = average_rating)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top Movies by Average Rating (Min. 50 Ratings)",
+       x = "Movie Titles",
+       y = "Average Rating") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") 
+
+```
+*This chart showcases the top movies by average rating (with a minimum of 50 ratings), featuring highly acclaimed titles like Fight Club and Pulp Fiction. These popular and well-rated movies act as benchmarks for similarity-based recommendations, guiding users toward high-quality content.*
+```{r}
+# Density Plot for Normalized Ratings
+ggplot(data_cleaned_encoded, aes(x = rating_normalized)) +
+  geom_density(fill = "blue", alpha = 0.4) +
+  theme_minimal() +
+  labs(title = "Distribution of Normalized Ratings",
+       x = "Normalized Ratings",
+       y = "Density")
+```
+*This density plot shows the distribution of normalized ratings, centered around zero, indicating effective bias correction for individual user tendencies. This balanced normalization ensures fairer comparisons across users, which is critical for generating accurate recommendations*
+
+*Model Training and Evaluation*
+```{r}
+calculate_similarity <- function(selected_movies, data,  top_n = 3) {
+  if (length(selected_movies) == 0 || nrow(data) == 0) {
+    return(data.frame(title = "No movies selected or insufficient data.", similarity = NA, genres = NA))
+  }
+
+ # Filter dataset to include only selected movies
+  filtered_data <- data %>% filter(title %in% selected_movies)
+
+ # Check if the filtered dataset contains any movies
+  if (nrow(filtered_data) == 0) {
+    return(data.frame(title = "Selected movies not found in the dataset.", similarity = NA, genres = NA))
+  }
+
+  # Extract unique genres from the selected movies
+  selected_genres <- unique(unlist(strsplit(filtered_data$genres, "\\|")))
+
+  # Calculate similarity based on genre overlap and normalize by union of genres
+  data <- data %>%
+    rowwise() %>%
+    mutate(similarity = length(intersect(strsplit(genres, "\\|")[[1]], selected_genres)) /
+                       length(union(strsplit(genres, "\\|")[[1]], selected_genres))) %>%
+    ungroup()
+
+  # Generate recommendations by filtering movies, sorting by similarity and normalized rating
+  recommendations <- data %>%
+    filter(!title %in% selected_movies & similarity > 0) %>%
+    arrange(desc(similarity), desc(rating_normalized)) %>%
+    distinct(title, .keep_all = TRUE) %>%
+    select(title, similarity, genres) %>%
+    head(top_n)
+
+  # If no recommendations found
+  if (nrow(recommendations) == 0) {
+    return(data.frame(title = "No recommendations found.", similarity = NA, genres = NA))
+  }
+
+  return(recommendations)
+}
+
+```
+
+```{r}
+calculate_lift_score <- function(recommendations, data) {
+  if (nrow(recommendations) == 0) {
+    return(0)
+  }
+
+  relevant_movies <- unique(recommendations$title)
+  all_movies <- unique(data$title)
+
+  # Precision of recommendations
+  precision <- length(relevant_movies) / length(all_movies)
+
+  # Random precision (baseline)
+  random_precision <- 1 / length(all_movies)
+
+  # Lift Score
+  lift_score <- ifelse(random_precision > 0, precision / random_precision, 0)
+  return(lift_score)
+}
+
+```
+
+```{r}
+# Load required library
+library(data.table)
+
+# Read x_data with proper options
+x_data <- fread("C:\\Users\\sivac\\Desktop\\x_data (1).csv", quote = "", fill = TRUE)
+
+# Read y_data with proper options
+y_data <- fread("C:\\Users\\sivac\\Desktop\\y_data (1).csv", quote = "", fill = TRUE)
+
+parse_movie_list <- function(movie_string) {
+  # Step 1: Remove leading/trailing brackets and quotes
+  movie_string <- gsub("^\\[|\\]$", "", movie_string)  # Remove square brackets at start/end
+  movie_string <- gsub("'", "", movie_string)         # Remove single quotes
+  movie_string <- gsub('"', '', movie_string)         # Remove double quotes
+  
+  # Step 2: Handle leading or trailing unmatched brackets
+  movie_string <- gsub("^\\[", "", movie_string)  # Remove unmatched leading brackets
+  movie_string <- gsub("\\]$", "", movie_string)  # Remove unmatched trailing brackets
+  
+  # Step 3: Split into individual titles
+  movie_list <- strsplit(movie_string, ",\\s*")[[1]]  # Split on commas with optional spaces
+  
+  # Step 4: Trim spaces and artifacts around each movie title
+  movie_list <- trimws(movie_list)  # Remove leading/trailing spaces
+  return(movie_list)
+}
+
+# Apply parsing to x_data and y_data
+x_data_parsed <- lapply(x_data[[1]], parse_movie_list) 
+y_data_parsed <- lapply(y_data[[1]], parse_movie_list)  
+
+# Check the parsed results
+print(x_data_parsed[[1]])
+print(y_data_parsed[[1]])
+
+```
+
+```{r}
+# Initialize an empty list to store scores and recommendations
+results <- list()
+
+# Loop through all sets
+for (i in seq_along(x_data_parsed)) {
+  # Generate recommendations
+  recommendations <- calculate_similarity(x_data_parsed[[i]], data_cleaned_encoded, top_n = 3)
+  
+  # Calculate score
+  overlap_actual <- length(intersect(recommendations$title, y_data_parsed[[i]]))
+  overlap_input <- length(intersect(recommendations$title, x_data_parsed[[i]]))
+  score <- (overlap_actual - overlap_input) / 3
+
+  # Store results
+  results[[i]] <- list(
+    Input = x_data_parsed[[i]],
+    Actual = y_data_parsed[[i]],
+    Recommendations = recommendations$title,
+    Score = score
+  )
+}
+# Calculate average score
+scores <- sapply(results, function(res) res$Score)
+average_score <- mean(scores, na.rm = TRUE)
+
+# Print the average score
+print(paste("Average Score:", average_score))
+
+# Print results for all rows
+#for (i in seq_along(results)) {
+ # print(paste("Set", i, "Results:"))
+ # print(results[[i]])
+#}
+```
+
+```{r}
+# Process the first two lists of movies from x_data_parsed
+first_two_movies <- x_data_parsed[1:2]
+
+# Function to generate and print recommendations for each list
+generate_recommendations <- function(movie_list, index) {
+  recommendations <- calculate_similarity(movie_list, data_cleaned_encoded, top_n = 3)
+  
+  # Print recommendations
+  cat("\nRecommendations for List", index, ":\n")
+  if (nrow(recommendations) > 0) {
+    print(recommendations)
+  } else {
+    cat("No recommendations found.\n")
+  }
+}
+
+# Iterate over the first two lists and generate recommendations
+for (i in seq_along(first_two_movies)) {
+  generate_recommendations(first_two_movies[[i]], i)
+}
+```
+
+```{r}
+library(shiny)
+
+# Define UI
+ui <- fluidPage(
+  titlePanel("Movie Recommendation System"),  # Title of the app
+  
+  sidebarLayout(
+    sidebarPanel(
+      textInput("movies", "Enter Movies (comma-separated):", 
+                placeholder = "e.g., Inception, Titanic, Avatar"),  # Input for movies
+      actionButton("recommend", "Get Recommendations"),  # Button to fetch recommendations
+      helpText("Enter one or more movie names separated by commas.")
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Recommendations", 
+                 h3("Recommended Movies"),
+                 tableOutput("recommendations")),  # Output table for recommendations
+        
+        tabPanel("Input",
+                 h3("Input Movies"),
+                 tableOutput("input_movies")),  # Output table for input movies
+      )
+    )
+  )
+)
+
+```
+
+```{r}
+server <- function(input, output) {
+  observeEvent(input$recommend, {
+    # Parse the input movies
+    input_movies <- unlist(strsplit(input$movies, ",\\s*"))  # Split by commas and trim spaces
+    
+    # Validate input
+    if (length(input_movies) > 0) {
+      # Generate recommendations
+      recommendations <- calculate_similarity(input_movies, data_cleaned_encoded, top_n = 3)
+      
+      # Render recommendations
+      output$recommendations <- renderTable({
+        if (nrow(recommendations) > 0) {
+          data.frame(Recommended_Movies = recommendations$title)
+        } else {
+          data.frame(Error = "No recommendations available for the entered movies.")
+        }
+      })
+      
+      # Render input movies
+      output$input_movies <- renderTable({
+        data.frame(Input_Movies = input_movies)
+      })
+      
+      # Optional: Render evaluation metrics or plots
+      output$metrics <- renderText({
+        paste("Number of Recommendations:", nrow(recommendations))
+      })
+    } else {
+      output$recommendations <- renderTable({
+        data.frame(Error = "Please enter one or more movie names.")
+      })
+    }
+  })
+}
+
+```
+
+```{r}
+shinyApp(ui = ui, server = server)
+```
+
+
+

@@ -1,0 +1,308 @@
+```{r}
+# Install necessary packages
+#install.packages("data.table")
+#install.packages("dplyr")
+#install.packages("tidyr")
+#install.packages("recommenderlab")
+#install.packages("shiny")
+```
+
+```{r}
+# Load libraries
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(recommenderlab)
+library(shiny)
+library(reshape2)
+
+```
+
+```{r}
+# Data Preprocessing
+
+data <- fread("/Users/chinyere/Downloads/merged_data_final (1) (1).csv")
+
+
+```
+
+
+```{r}
+head(data)
+
+```
+
+```{r}
+str(data)
+```
+
+```{r}
+dim(data)
+```
+
+
+##seperating userid and movie title
+
+```{r}
+data1 <- data %>%
+  select(userId, title)
+```
+
+```{r}
+head(data1)
+```
+
+```{r}
+dim(data1)
+```
+
+```{r}
+str(data1)
+```
+```{r}
+data1 <- unique(data1[, .(userId, title)])
+```
+
+
+```{r}
+#transformed_data <- data %>%
+ # distinct() %>%  # Remove duplicate rows (optional, depending on your input data)
+ # group_by(userId) %>%
+  #summarize(title = paste(unique(title), collapse = ", "), .groups = "drop")
+```
+
+
+```{r}
+# Flatten movie lists to create a binary interaction matrix
+movie_list <- unique(unlist(data1$title))  # Get all unique movies
+names(movie_list) <- as.character(seq_along(movie_list)) 
+
+user_ids <- unique(data1$userId)
+
+binary_matrix <- matrix(0, nrow = length(user_ids), ncol = length(movie_list),
+                        dimnames = list(user_ids, movie_list))
+
+
+
+```
+
+```{r}
+for (i in 1:nrow(data1)) {
+  user_id <- data1$userId[i]
+  movie_title <- data1$title[i]
+  
+  # Get the row and column indices for the user_id and movie_title
+  row_index <- which(user_ids == user_id)
+  col_index <- which(movie_list == movie_title)
+  
+  # Assign 1 to the appropriate position in the binary matrix
+  binary_matrix[row_index, col_index] <- 1
+}
+```
+
+
+```{r}
+#head(binary_matrix)
+```
+
+
+```{r}
+# Convert binary matrix to realRatingMatrix
+interaction_matrix <- as(binary_matrix, "binaryRatingMatrix")
+```
+
+
+```{r}
+# Testing: Predict recommendations for each user
+n_recommendations <- 5  # Number of recommendations to generate
+results <- list()
+```
+
+
+```{r}
+recc_model <- Recommender(interaction_matrix, method = "IBCF", parameter = list(k = 30, method = "cosine"))
+```
+
+
+#Test
+
+```{r}
+# Simulate input: 3 movies watched by a synthetic user
+input_movies <- c('Crimson Tide (1995)', 'Ace Ventura: When Nature Calls (1995)', 'Down Periscope (1996)')
+
+# Get the item list from the recommender model
+#model_items <- colnames(as(cf_model@data, "matrix"))
+
+# Initialize the synthetic user vector to match the model's item list
+#synthetic_user <- rep(0, length(model_items))
+#names(synthetic_user) <- model_items
+
+# Mark the input movies as watched, only if they exist in the model
+#watched_movies <- intersect(input_movies, model_items)
+#synthetic_user[watched_movies] <- 1
+
+
+```
+
+```{r}
+# Create a synthetic user interaction vector
+synthetic_user <- rep(0, length(movie_list))  # Initialize all movies as not watched
+names(synthetic_user) <- movie_list
+synthetic_user[input_movies] <- 1  # Mark the input movies as watched
+
+# Convert to binaryRatingMatrix for prediction
+synthetic_user_matrix <- as(matrix(synthetic_user, nrow = 1), "binaryRatingMatrix")
+rownames(synthetic_user_matrix) <- "Synthetic_User"
+
+# Predict recommendations for the synthetic user
+predictions <- predict(recc_model, synthetic_user_matrix, n = 5, type = "topNList")
+
+# View the recommendations
+recommendations <- as(predictions, "list")
+cat("Recommended movies based on associations:\n")
+print(recommendations)
+```
+
+
+
+
+```{r}
+# Assuming `movie_list` contains the actual movie titles
+recommended_titles <- movie_list[recommendations[[1]]]  # Map indices to titles
+
+# Display the recommended movie titles
+cat("Recommended movies based on associations:\n")
+print(recommended_titles)
+```
+
+```{r}
+
+```
+
+
+
+```{r}
+
+# Load test datasets x and y (assume they are CSV files)
+testy <- read.csv("/Users/chinyere/Downloads/y_data (1).csv")  # Movies to feed into the model
+testx <- read.csv("/Users/chinyere/Downloads/x_data (1).csv", stringsAsFactors = FALSE)  # Movies to validate predictions
+```
+
+
+
+```{r}
+# Convert the 'y' column of testy to character type
+testy$y <- as.character(testy$y)
+
+# Extract the first row of movies from testy as a vector
+first_row_movies <- unlist(strsplit(testy[1, "y"], ", "))
+
+# Specify the movies to exclude
+excluded_movies <- c('Crimson Tide (1995)', 'Ace Ventura: When Nature Calls (1995)', 'Down Periscope (1996)')
+
+# Filter the movies by excluding the specified ones
+filtered_movies <- setdiff(first_row_movies, excluded_movies)
+
+# Repeat similar steps for testx, if needed
+# Assuming 'x' column in testx has movies data as well (adjust as per actual column name)
+if ("x" %in% colnames(testx)) {
+  testx$x <- as.character(testx$x)  # Convert to character if needed
+  first_row_movies_x <- unlist(strsplit(testx[1, "x"], ", "))
+  filtered_movies_x <- setdiff(first_row_movies_x, excluded_movies)
+}
+
+# Print the results
+print("Filtered movies from testy:")
+print(filtered_movies)
+
+if (exists("filtered_movies_x")) {
+  print("Filtered movies from testx:")
+  print(filtered_movies_x)
+}
+
+```
+
+
+```{r}
+
+# Recommended movie titles
+recommended_movies <- c("Band of Outsiders (Bande à part) (1964)", "Little Soldier, The (Petit soldat, Le) (1963)","2 ou 3 choses que je sais d'elle (2 or 3 Things I Know About Her) (1967)")
+
+combined_filtered_movies <- union(filtered_movies, filtered_movies_x)
+
+# Check if any recommended movies occur in the first row
+matches <- intersect(recommended_movies, combined_filtered_movies)
+
+# Print the result
+if (length(matches) > 0) {
+  cat("Matching movies found:\n")
+  print(matches)
+} else {
+  cat("No matching movies found.\n")
+}
+```
+
+
+
+```{r}
+library(shiny)
+library(recommenderlab)
+
+# Shiny App
+ui <- fluidPage(
+  titlePanel("Movie Recommendation System"),
+  sidebarLayout(
+    sidebarPanel(
+      textInput("movie_title", "Enter a Movie Title:", value = ""),
+      actionButton("recommend_btn", "Get Recommendations")
+    ),
+    mainPanel(
+      h3("Recommendations"),
+      verbatimTextOutput("recommendations")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  observeEvent(input$recommend_btn, {
+    input_title <- input$movie_title
+    
+    # Check if the input title is in the movie list
+    if (input_title %in% movie_list) {
+      synthetic_user <- rep(0, length(movie_list))
+      names(synthetic_user) <- movie_list
+      synthetic_user[input_title] <- 1  # Mark the input movie as watched
+      
+      synthetic_user_matrix <- as(matrix(synthetic_user, nrow = 1), "binaryRatingMatrix")
+      rownames(synthetic_user_matrix) <- "Synthetic_User"
+      
+      predictions <- predict(recc_model, synthetic_user_matrix, n = 3, type = "topNList")
+      recommendations <- as(predictions, "list")[[1]]
+      
+      # Correctly map all indices to movie titles
+      recommended_titles <- movie_list[recommendations]
+      
+      output$recommendations <- renderPrint({
+        if (length(recommended_titles) > 0) {
+          paste("Recommended Movies:", paste(recommended_titles, collapse = ", "))
+        } else {
+          "No recommendations found. Try another movie."
+        }
+      })
+    } else {
+      output$recommendations <- renderPrint({
+        "Movie not found in the database. Please enter a valid movie title."
+      })
+    }
+  })
+}
+ 
+
+
+
+shinyApp(ui = ui, server = server)
+
+```
+
+
+
